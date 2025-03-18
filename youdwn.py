@@ -17,14 +17,17 @@ class YouTubeDownloader:
         self.root.configure(bg="#f0f0f0")
         self.app_font = ("Arial", 12)
 
-        # URL Frame
+        # URL Frame with improved mouse control
         url_frame = tk.Frame(root, bg="#f0f0f0", pady=10)
         url_frame.pack(fill="x", padx=20)
         self.url_label = tk.Label(url_frame, text="Enter YouTube URL:", bg="#f0f0f0", font=self.app_font)
         self.url_label.pack(side="left", padx=5)
+        
         self.url_entry = tk.Entry(url_frame, font=self.app_font, width=60)
         self.url_entry.pack(side="left", expand=True, fill="x", padx=5)
-        self.url_entry.bind("<Button-3>", self.show_context_menu)
+        self.url_entry.bind("<Button-3>", self.show_context_menu)  # Right click
+        self.url_entry.bind("<Control-a>", lambda e: self.select_all_text())  # Ctrl+A
+        self.url_entry.bind("<Control-A>", lambda e: self.select_all_text())  # Shift+Ctrl+A
         self.url_entry.bind("<Return>", lambda event: self.get_video_info())
 
         # Get Info Button
@@ -72,7 +75,9 @@ class YouTubeDownloader:
 
         self.location_entry = tk.Entry(location_frame, font=self.app_font, width=40)
         self.location_entry.pack(side="left", expand=True, fill="x", padx=5)
-        self.location_entry.bind("<Button-3>", self.show_context_menu)
+        self.location_entry.bind("<Button-3>", self.show_context_menu)  # Right click
+        self.location_entry.bind("<Control-a>", lambda e: self.select_all_text())  # Ctrl+A
+        self.location_entry.bind("<Control-A>", lambda e: self.select_all_text())  # Shift+Ctrl+A
         self.set_default_download_path()
         self.browse_btn = tk.Button(location_frame, text="Browse", command=self.browse_location, font=self.app_font, bg="#4CAF50", fg="white", padx=10)
         self.browse_btn.pack(side="right")
@@ -104,46 +109,51 @@ class YouTubeDownloader:
 
 
     def show_context_menu(self, event):
-        """Displays the context menu."""
-        try:
-            pass  # Add your logic here
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            widget = event.widget
-            if widget == self.url_entry or widget == self.location_entry:
+        """Displays the context menu for text widgets."""
+        widget = event.widget
+        if isinstance(widget, (tk.Entry, ttk.Combobox)):
+            try:
                 self.context_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.context_menu.grab_release()
+                self.context_menu.focus_set()  # Give focus to the menu
+            finally:
+                self.context_menu.grab_release()
 
     def cut_text(self):
+        """Cut the selected text."""
         try:
             widget = self.root.focus_get()
-            if isinstance(widget, tk.Entry):
+            if isinstance(widget, (tk.Entry, ttk.Combobox)):
                 widget.event_generate("<<Cut>>")
-        except: pass
+        except Exception as e:
+            print(f"Cut error: {e}")
 
     def copy_text(self):
+        """Copy the selected text."""
         try:
             widget = self.root.focus_get()
-            if isinstance(widget, tk.Entry):
+            if isinstance(widget, (tk.Entry, ttk.Combobox)):
                 widget.event_generate("<<Copy>>")
-        except: pass
+        except Exception as e:
+            print(f"Copy error: {e}")
 
     def paste_text(self):
+        """Paste text at the cursor position."""
         try:
             widget = self.root.focus_get()
-            if isinstance(widget, tk.Entry):
+            if isinstance(widget, (tk.Entry, ttk.Combobox)):
                 widget.event_generate("<<Paste>>")
-        except: pass
+        except Exception as e:
+            print(f"Paste error: {e}")
 
     def select_all_text(self):
+        """Select all text in the current widget."""
         try:
             widget = self.root.focus_get()
-            if isinstance(widget, tk.Entry):
+            if isinstance(widget, (tk.Entry, ttk.Combobox)):
                 widget.select_range(0, tk.END)
-                widget.icursor(tk.END)
-        except: pass
-
+                widget.icursor(tk.END)  # Move cursor to end
+        except Exception as e:
+            print(f"Select all error: {e}")
 
     def set_default_download_path(self):
         """Sets the default download path."""
