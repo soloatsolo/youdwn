@@ -5,16 +5,16 @@ A Python application with a graphical user interface for downloading YouTube vid
 ## Features
 
 - User-friendly graphical interface
-- Video quality selection
-- Download progress tracking
+- Video quality selection with file size information
 - Video thumbnail preview
 - Custom save location
-- File size information
+- Download progress tracking
+- Support for multiple video qualities
 
 ## Requirements
 
 - Python 3.x
-- Required packages are listed in `requirements.txt`
+- Required packages listed in `requirements.txt`
 
 ## Installation
 
@@ -41,15 +41,15 @@ pip install -r requirements.txt
 python youdwn.py
 ```
 
-2. Enter a YouTube URL
-3. Click "Get Info" to load video information
-4. Select desired quality
-5. Choose save location (optional)
-6. Click "Download" to start downloading
+2. Enter a YouTube URL in the input field
+3. Click "Get Info" to load video information and available qualities
+4. Select your desired video quality from the dropdown menu
+5. (Optional) Choose a custom save location
+6. Click "Download" to start downloading the video
 
 ## Dependencies
 
-- tkinter
-- pytube
-- Pillow
-- requests
+- tkinter (GUI framework)
+- pytube (YouTube video downloading)
+- Pillow (Image processing)
+- requests (HTTP requests)
