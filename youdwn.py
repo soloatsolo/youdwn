@@ -263,20 +263,47 @@ class YouTubeDownloader:
                     if self.audio_only.get():
                         formats = [f for f in info['formats'] 
                                  if f.get('vcodec') == 'none']
+                        # Sort audio formats by quality (bitrate)
+                        formats.sort(key=lambda x: float(x.get('abr', 0) or 0), reverse=True)
                     else:
                         formats = [f for f in info['formats']
                                  if f.get('vcodec') != 'none']
+                        # Sort video formats by quality (resolution and fps)
+                        formats.sort(key=lambda x: (
+                            float(x.get('height', 0) or 0),
+                            float(x.get('fps', 0) or 0),
+                            float(x.get('abr', 0) or 0)
+                        ), reverse=True)
                     
                     # Format the quality options
                     self.available_formats = []
+                    
+                    # Add "Best Quality" option first
+                    if self.audio_only.get():
+                        self.available_formats.append({
+                            'label': "Best Audio Quality (Auto)",
+                            'format_id': 'bestaudio/best'
+                        })
+                    else:
+                        self.available_formats.append({
+                            'label': "Best Video Quality (Auto)",
+                            'format_id': 'bestvideo+bestaudio/best'
+                        })
+                    
+                    # Add specific format options
                     for f in formats:
                         if self.audio_only.get():
-                            label = f"Audio - {f.get('acodec', 'N/A')} - {f.get('abr', 'N/A')}kbps"
+                            abr = f.get('abr', 'N/A')
+                            acodec = f.get('acodec', 'N/A')
+                            filesize = self.format_size(f.get('filesize', 0))
+                            label = f"Audio - {acodec} - {abr}kbps - Size: {filesize}"
                         else:
                             height = f.get('height', 'N/A')
                             fps = f.get('fps', '')
                             vcodec = f.get('vcodec', 'N/A')
-                            label = f"{height}p{f' {fps}fps' if fps else ''} - {vcodec}"
+                            acodec = f.get('acodec', 'N/A')
+                            filesize = self.format_size(f.get('filesize', 0))
+                            label = f"{height}p{f' {fps}fps' if fps else ''} - {vcodec}/{acodec} - Size: {filesize}"
                         
                         self.available_formats.append({
                             'label': label,
@@ -297,6 +324,18 @@ class YouTubeDownloader:
                 ])
 
         threading.Thread(target=fetch_info).start()
+
+    def format_size(self, size_bytes):
+        """Format file size in human readable format."""
+        if not size_bytes:
+            return "N/A"
+        units = ['B', 'KB', 'MB', 'GB']
+        size = float(size_bytes)
+        unit_index = 0
+        while size >= 1024 and unit_index < len(units) - 1:
+            size /= 1024
+            unit_index += 1
+        return f"{size:.1f} {units[unit_index]}"
 
     def load_thumbnail(self, url):
         try:
