@@ -13,9 +13,30 @@ class YouTubeDownloader:
     def __init__(self, root):
         self.root = root
         self.root.title("YouTube Downloader")
-        self.root.geometry("800x600")
+        self.root.geometry("800x600")  # Initial size
+        self.root.minsize(800, 600)    # Minimum window size
         self.root.resizable(True, True)
         self.root.configure(bg="#f0f0f0")
+        
+        # Create scrollable canvas
+        self.canvas = tk.Canvas(root, bg="#f0f0f0")
+        scrollbar = ttk.Scrollbar(root, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+        
+        # Configure canvas
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw", width=780)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack scrollbar and canvas
+        scrollbar.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        
+        # Mouse wheel scrolling
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
         
         # Load icon
         try:
@@ -73,8 +94,8 @@ class YouTubeDownloader:
             foreground=[("disabled", "#666666")]
         )
         
-        # Main container with padding
-        self.main_frame = ttk.Frame(root, padding="20 20 20 20")
+        # Main container with padding (now in scrollable frame)
+        self.main_frame = ttk.Frame(self.scrollable_frame, padding="20 20 20 20")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Create header
@@ -100,16 +121,30 @@ class YouTubeDownloader:
         self.info_btn = ttk.Button(url_input_frame,
                                 text="Get Info",
                                 command=self.get_video_info,
-                                style="Download.TButton")
+                                style="Info.TButton")
         self.info_btn.pack(side=tk.RIGHT)
         
-        # Video info frame
-        self.info_frame = ttk.LabelFrame(self.main_frame, text="Video Information", padding=10)
-        self.info_frame.pack(fill=tk.X, pady=(0, 15))
+        # Create a container for the video info and controls
+        self.content_frame = ttk.Frame(self.main_frame)
+        self.content_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Thumbnail
-        self.thumbnail_label = ttk.Label(self.info_frame)
+        # Left panel for thumbnail
+        self.left_panel = ttk.Frame(self.content_frame)
+        self.left_panel.pack(side=tk.LEFT, fill=tk.Y, pady=(0, 15), padx=(0, 10))
+        
+        # Thumbnail frame in left panel
+        self.thumbnail_frame = ttk.LabelFrame(self.left_panel, text="Preview", padding=10)
+        self.thumbnail_frame.pack(fill=tk.BOTH, expand=True)
+        self.thumbnail_label = ttk.Label(self.thumbnail_frame)
         self.thumbnail_label.pack(pady=5)
+        
+        # Right panel for controls
+        self.right_panel = ttk.Frame(self.content_frame)
+        self.right_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        # Video info frame in right panel
+        self.info_frame = ttk.LabelFrame(self.right_panel, text="Video Information", padding=10)
+        self.info_frame.pack(fill=tk.X, pady=(0, 15))
         
         # Quality selection
         quality_frame = ttk.Frame(self.info_frame)
@@ -127,7 +162,7 @@ class YouTubeDownloader:
                        command=self.toggle_audio_only).pack(side=tk.RIGHT)
         
         # Save location frame
-        save_frame = ttk.LabelFrame(self.main_frame, text="Save Location", padding=10)
+        save_frame = ttk.LabelFrame(self.right_panel, text="Save Location", padding=10)
         save_frame.pack(fill=tk.X, pady=(0, 15))
         
         self.save_path = tk.StringVar()
@@ -142,14 +177,14 @@ class YouTubeDownloader:
                   command=self.browse_location).pack(side=tk.RIGHT)
         
         # Download button
-        self.download_btn = ttk.Button(self.main_frame,
+        self.download_btn = ttk.Button(self.right_panel,
                                      text="Download",
                                      command=self.start_download,
                                      style="Download.TButton",
                                      state=tk.DISABLED)
         self.download_btn.pack(pady=10)
         
-        # Progress frame
+        # Progress frame at the bottom
         progress_frame = ttk.LabelFrame(self.main_frame, text="Progress", padding=10)
         progress_frame.pack(fill=tk.X)
         
@@ -176,6 +211,10 @@ class YouTubeDownloader:
         self.available_formats = []
         self.video_title = ""
         self.set_default_download_path()
+
+    def _on_mousewheel(self, event):
+        """Handle mouse wheel scrolling"""
+        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def show_context_menu(self, event):
         try:
@@ -265,7 +304,7 @@ class YouTubeDownloader:
             image = Image.open(BytesIO(response.content))
             
             # Resize maintaining aspect ratio
-            basewidth = 320
+            basewidth = 300  # Slightly smaller thumbnail
             wpercent = (basewidth / float(image.size[0]))
             hsize = int((float(image.size[1]) * float(wpercent)))
             image = image.resize((basewidth, hsize), Image.Resampling.LANCZOS)
