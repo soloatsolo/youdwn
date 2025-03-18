@@ -380,14 +380,38 @@ class YouTubeDownloader:
     def yt_dlp_progress_hook(self, d):
         """Callback for yt-dlp progress updates."""
         if d['status'] == 'downloading':
-            percentage = d['_percent_str']
             try:
-                percentage = float(percentage.replace('%', '').replace(' ', '').strip())
-            except ValueError:
-                percentage = 0.0
-            self.progress_bar['value'] = percentage
-            self.progress_label.config(text=f"Downloading: {d['_percent_str']}")
-            self.root.update_idletasks()
+                # Calculate percentage from downloaded bytes and total size
+                downloaded = d.get('downloaded_bytes', 0)
+                total = d.get('total_bytes', 0)
+                if total:
+                    percentage = (downloaded / total) * 100
+                else:
+                    # Fall back to estimated total bytes if available
+                    total = d.get('total_bytes_estimate', 0)
+                    if total:
+                        percentage = (downloaded / total) * 100
+                    else:
+                        # If no size info available, use provided percentage
+                        percentage = float(d['_percent_str'].replace('%', '').strip())
+
+                # Update progress bar
+                self.root.after(0, lambda: [
+                    self.progress_bar.config(value=percentage),
+                    self.progress_label.config(
+                        text=f"Downloading: {d['_percent_str']} • "
+                             f"Size: {d.get('_total_bytes_str', 'N/A')} • "
+                             f"Speed: {d.get('_speed_str', 'N/A')}"
+                    ),
+                    self.root.update_idletasks()
+                ])
+            except Exception as e:
+                print(f"Progress error: {e}")
+        elif d['status'] == 'finished':
+            self.root.after(0, lambda: [
+                self.progress_bar.config(value=100),
+                self.progress_label.config(text="Download complete! Processing file...")
+            ])
 
     def toggle_audio_only(self):
         """Toggles between audio-only and video formats."""
