@@ -61,6 +61,18 @@ class YouTubeDownloader:
             foreground=[("disabled", "#666666")]
         )
         
+        # Add new style for info button
+        self.style.configure("Info.TButton",
+            font=("Helvetica", 11),
+            padding=5,
+            background="#2196F3",
+            foreground="white"
+        )
+        self.style.map("Info.TButton",
+            background=[("active", "#1976D2"), ("disabled", "#cccccc")],
+            foreground=[("disabled", "#666666")]
+        )
+        
         # Main container with padding
         self.main_frame = ttk.Frame(root, padding="20 20 20 20")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -72,14 +84,24 @@ class YouTubeDownloader:
                  text="YouTube Video Downloader", 
                  style="Header.TLabel").pack()
 
-        # URL Frame
+        # URL Frame with Get Info button
         url_frame = ttk.LabelFrame(self.main_frame, text="Video URL", padding=10)
         url_frame.pack(fill=tk.X, pady=(0, 15))
         
-        self.url_entry = ttk.Entry(url_frame, font=self.app_font, style="URL.TEntry")
-        self.url_entry.pack(fill=tk.X, expand=True, pady=5)
+        url_input_frame = ttk.Frame(url_frame)
+        url_input_frame.pack(fill=tk.X, expand=True)
+        
+        self.url_entry = ttk.Entry(url_input_frame, font=self.app_font, style="URL.TEntry")
+        self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.url_entry.bind("<Button-3>", self.show_context_menu)
         self.url_entry.bind("<Return>", lambda e: self.get_video_info())
+        
+        # Add Get Info button
+        self.info_btn = ttk.Button(url_input_frame,
+                                text="Get Info",
+                                command=self.get_video_info,
+                                style="Download.TButton")
+        self.info_btn.pack(side=tk.RIGHT)
         
         # Video info frame
         self.info_frame = ttk.LabelFrame(self.main_frame, text="Video Information", padding=10)
@@ -173,12 +195,14 @@ class YouTubeDownloader:
             self.save_path.set(directory)
 
     def get_video_info(self):
+        """Gets video information using yt-dlp."""
         url = self.url_entry.get().strip()
         if not url:
             messagebox.showerror("Error", "Please enter a YouTube URL")
             return
             
         self.download_btn.config(state=tk.DISABLED)
+        self.info_btn.config(state=tk.DISABLED)
         self.status_label.config(text="Fetching video information...")
         self.progress_var.set(0)
         
@@ -221,10 +245,17 @@ class YouTubeDownloader:
                         })
                     
                     # Update UI
-                    self.root.after(0, self.update_ui_after_info)
+                    self.root.after(0, lambda: [
+                        self.update_ui_after_info(),
+                        self.info_btn.config(state=tk.NORMAL)
+                    ])
                     
             except Exception as e:
-                self.root.after(0, lambda: self.show_error(str(e)))
+                self.root.after(0, lambda: [
+                    self.show_error(str(e)),
+                    self.info_btn.config(state=tk.NORMAL),
+                    self.download_btn.config(state=tk.DISABLED)
+                ])
 
         threading.Thread(target=fetch_info).start()
 
