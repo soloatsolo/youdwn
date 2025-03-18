@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
@@ -54,6 +55,16 @@ class YouTubeDownloader:
         self.filesize_label = tk.Label(quality_frame, text="File Size: N/A", font=self.app_font, bg="#f0f0f0")
         self.filesize_label.pack(side="left", padx=10)
 
+        # Add audio-only checkbox
+        self.audio_only_var = tk.BooleanVar()
+        self.audio_only_check = tk.Checkbutton(quality_frame, 
+                                             text="Audio Only",
+                                             variable=self.audio_only_var,
+                                             command=self.toggle_audio_only,
+                                             font=self.app_font,
+                                             bg="#f0f0f0")
+        self.audio_only_check.pack(side="right", padx=10)
+
 
         # Save Location (inside a LabelFrame, below quality)
         location_frame = tk.LabelFrame(options_frame, text="Save Location", font=self.app_font, bg="#f0f0f0", padx=10, pady=5)
@@ -95,6 +106,9 @@ class YouTubeDownloader:
     def show_context_menu(self, event):
         """Displays the context menu."""
         try:
+            pass  # Add your logic here
+        except Exception as e:
+            print(f"An error occurred: {e}")
             widget = event.widget
             if widget == self.url_entry or widget == self.location_entry:
                 self.context_menu.tk_popup(event.x_root, event.y_root)
@@ -176,7 +190,6 @@ class YouTubeDownloader:
                 return f"{size_bytes:.2f} {unit}"
             size_bytes /= 1024.0
 
-
     def get_video_info(self):
         """Gets video information (formats, thumbnail) using yt-dlp."""
         url = self.url_entry.get()
@@ -192,10 +205,8 @@ class YouTubeDownloader:
         self.quality_combo.set('')
         self.filesize_label.config(text="File Size: N/A")
 
-
         def fetch_info():
             ydl_opts = {
-                'listformats': True,
                 'quiet': True,
                 'no_warnings': True,
                 'extract_flat': "in_playlist",
@@ -204,14 +215,12 @@ class YouTubeDownloader:
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info_dict = ydl.extract_info(url, download=False)
-
+                    
                     if "entries" in info_dict:
-                        messagebox.showinfo("Playlist Detected", "This is a playlist.  The downloader will only show information for the first video.  To download the entire playlist, click 'Download'.")
                         info_dict = info_dict['entries'][0]
-
+                    
                     if not info_dict:
-                      raise Exception("Could not retrieve video information")
-
+                        raise Exception("Could not retrieve video information")
 
                     thumbnail_url = info_dict.get('thumbnail')
                     if thumbnail_url:
@@ -219,46 +228,57 @@ class YouTubeDownloader:
 
                     formats = info_dict.get('formats', [])
                     if not formats:
-                      raise Exception("No formats found")
+                        raise Exception("No formats found")
 
                     formatted_formats = []
+                    # Add best audio+video combined option
+                    formatted_formats.append((
+                        "Best Quality (Auto)", 
+                        "bestvideo*+bestaudio/best", 
+                        None
+                    ))
+                    
+                    # Add specific formats
                     for f in formats:
-                        format_id = f.get('format_id')
+                        format_id = f.get('format_id', '')
                         ext = f.get('ext', 'N/A')
-                        resolution = f.get('resolution', 'N/A')
-                        if resolution == 'N/A' and 'height' in f:
-                            resolution = f"{f.get('height')}p"
                         filesize = f.get('filesize')
                         filesize_str = self.format_size(filesize) if filesize else "N/A"
-                        format_note = f.get('format_note', "")
-
-                        if f.get('vcodec') == 'none':
-                            display_str = f"Audio Only - {ext} - {filesize_str}"
+                        
+                        # Check if it's an audio-only format
+                        is_audio_only = f.get('vcodec') == 'none'
+                        
+                        if is_audio_only:
+                            acodec = f.get('acodec', 'N/A')
+                            abr = f.get('abr', 'N/A')
+                            display_str = f"Audio Only - {acodec} - {abr}kbps - {ext} - {filesize_str}"
                         else:
-                            display_str = f"{resolution} - {ext} - {filesize_str} - {format_note}"
-
-                        formatted_formats.append((display_str, format_id, filesize))
+                            height = f.get('height', 'N/A')
+                            vcodec = f.get('vcodec', 'N/A')
+                            fps = f.get('fps', 'N/A')
+                            acodec = f.get('acodec', 'N/A')
+                            resolution = f"{height}p" if height != 'N/A' else 'N/A'
+                            
+                            # Only add formats with both video and audio, or video-only formats
+                            if acodec != 'none' or is_audio_only:
+                                display_str = f"{resolution} - {vcodec} - {fps}fps - {acodec} - {ext} - {filesize_str}"
+                                formatted_formats.append((display_str, format_id, filesize))
 
                     self.available_formats = formatted_formats
-
                     self.root.after(0, lambda: [
-                        self.quality_combo.config(values=[f[0] for f in self.available_formats]),
-                        self.quality_combo.set(self.available_formats[0][0] if self.available_formats else ""),
-                        self.update_filesize(),
+                        self.update_format_list(),
                         self.download_button.config(state=tk.NORMAL),
                         self.info_btn.config(state=tk.NORMAL),
                         self.progress_label.config(text=f"Video Title: {info_dict.get('title', 'N/A')}")
                     ])
 
-
-            except yt_dlp.utils.DownloadError as e:
-                self.root.after(0, lambda: [messagebox.showerror("Error", f"yt-dlp error: {e}"), self.info_btn.config(state=tk.NORMAL)])
             except Exception as e:
-                self.root.after(0, lambda: [messagebox.showerror("Error", str(e)), self.info_btn.config(state=tk.NORMAL)])
+                self.root.after(0, lambda: [
+                    messagebox.showerror("Error", str(e)),
+                    self.info_btn.config(state=tk.NORMAL)
+                ])
 
         threading.Thread(target=fetch_info).start()
-
-
 
     def update_filesize(self, event=None):
         """Updates the filesize label."""
@@ -271,8 +291,6 @@ class YouTubeDownloader:
             self.filesize_label.config(text=f"File Size: {self.format_size(selected_size)}")
         except IndexError:
             self.filesize_label.config(text="File Size: N/A")
-
-
 
     def start_download(self):
         """Starts the download."""
@@ -300,30 +318,64 @@ class YouTubeDownloader:
         """Downloads the video using yt-dlp."""
         url = self.url_entry.get()
         output_path = self.location_entry.get()
-        selected_format_id = self.available_formats[self.quality_combo.current()][1]
+        selected_index = self.quality_combo.current()
+        
+        if selected_index < 0:
+            messagebox.showerror("Error", "Please select a quality")
+            return
+            
+        selected_format = self.available_formats[selected_index][1]
+        is_audio_only = "Audio Only" in self.available_formats[selected_index][0]
 
         ydl_opts = {
             'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-            'format': selected_format_id,
+            'format': selected_format,
             'progress_hooks': [self.yt_dlp_progress_hook],
             'quiet': True,
             'no_warnings': True,
         }
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            self.progress_label.config(text="Download complete!")
-            messagebox.showinfo("Success", "Video downloaded successfully!")
+        if self.audio_only_var.get() or is_audio_only:
+            ydl_opts.update({
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+                'format': 'bestaudio/best',
+            })
+        else:
+            # For video downloads, ensure we merge the formats if needed
+            ydl_opts.update({
+                'format': selected_format,
+                'merge_output_format': 'mp4',
+            })
 
-        except yt_dlp.utils.DownloadError as e:
-            messagebox.showerror("Download Error", str(e))
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-        finally:
-            self.download_button.config(state=tk.NORMAL)
+        try:
+            self.download_button.config(state=tk.DISABLED)
+            self.progress_label.config(text="Starting download...")
             self.progress_bar['value'] = 0
 
+            def download_thread():
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([url])
+                    self.root.after(0, lambda: [
+                        self.progress_label.config(text="Download complete!"),
+                        messagebox.showinfo("Success", "Download completed successfully!"),
+                        self.download_button.config(state=tk.NORMAL)
+                    ])
+                except Exception as e:
+                    self.root.after(0, lambda: [
+                        messagebox.showerror("Error", str(e)),
+                        self.download_button.config(state=tk.NORMAL)
+                    ])
+
+            threading.Thread(target=download_thread).start()
+
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            self.download_button.config(state=tk.NORMAL)
 
     def yt_dlp_progress_hook(self, d):
         """Callback for yt-dlp progress updates."""
@@ -336,6 +388,30 @@ class YouTubeDownloader:
             self.progress_bar['value'] = percentage
             self.progress_label.config(text=f"Downloading: {d['_percent_str']}")
             self.root.update_idletasks()
+
+    def toggle_audio_only(self):
+        """Toggles between audio-only and video formats."""
+        self.update_format_list()
+
+    def update_format_list(self):
+        """Updates the format list based on audio-only selection."""
+        if not self.available_formats:
+            return
+            
+        filtered_formats = []
+        for fmt in self.available_formats:
+            display_str, format_id, filesize = fmt
+            if self.audio_only_var.get():
+                if "Audio Only" in display_str:
+                    filtered_formats.append(fmt)
+            else:
+                if "Audio Only" not in display_str:
+                    filtered_formats.append(fmt)
+        
+        self.quality_combo.config(values=[f[0] for f in filtered_formats])
+        if filtered_formats:
+            self.quality_combo.set(filtered_formats[0][0])
+            self.update_filesize()
 
 
 if __name__ == "__main__":
