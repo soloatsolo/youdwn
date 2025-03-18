@@ -7,446 +7,348 @@ import yt_dlp
 from PIL import Image, ImageTk
 import requests
 from io import BytesIO
-
+import re
 
 class YouTubeDownloader:
     def __init__(self, root):
         self.root = root
-        self.root.title("YouTube Video Downloader (yt-dlp)")
-        self.root.geometry("900x780")  # Increased height further
+        self.root.title("YouTube Downloader")
+        self.root.geometry("800x600")
+        self.root.resizable(True, True)
         self.root.configure(bg="#f0f0f0")
-        self.app_font = ("Arial", 12)
-
-        # URL Frame with improved mouse control
-        url_frame = tk.Frame(root, bg="#f0f0f0", pady=10)
-        url_frame.pack(fill="x", padx=20)
-        self.url_label = tk.Label(url_frame, text="Enter YouTube URL:", bg="#f0f0f0", font=self.app_font)
-        self.url_label.pack(side="left", padx=5)
         
-        self.url_entry = tk.Entry(url_frame, font=self.app_font, width=60)
-        self.url_entry.pack(side="left", expand=True, fill="x", padx=5)
-        self.url_entry.bind("<Button-3>", self.show_context_menu)  # Right click
-        self.url_entry.bind("<Control-a>", lambda e: self.select_all_text())  # Ctrl+A
-        self.url_entry.bind("<Control-A>", lambda e: self.select_all_text())  # Shift+Ctrl+A
-        self.url_entry.bind("<Return>", lambda event: self.get_video_info())
+        # Load icon
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
+            if os.path.exists(icon_path):
+                icon_image = Image.open(icon_path)
+                icon_photo = ImageTk.PhotoImage(icon_image)
+                self.root.iconphoto(True, icon_photo)
+                self.icon_photo = icon_photo  # Keep reference
+        except Exception as e:
+            print(f"Could not load icon: {e}")
 
-        # Get Info Button
-        self.info_btn = tk.Button(url_frame, text="Get Info", command=self.get_video_info, font=self.app_font, bg="#2196F3", fg="white", padx=10)
-        self.info_btn.pack(side="right", padx=5)
+        # Fonts and styles
+        self.app_font = ("Helvetica", 11)
+        self.title_font = ("Helvetica", 16, "bold")
+        
+        # Configure styles
+        self.style = ttk.Style()
+        self.style.theme_use("clam")
+        
+        # Configure colors
+        self.style.configure(".", 
+            background="#f0f0f0",
+            foreground="#333333",
+            font=self.app_font
+        )
+        self.style.configure("Header.TLabel",
+            font=self.title_font,
+            padding=10
+        )
+        self.style.configure("URL.TEntry",
+            padding=5,
+            fieldbackground="white"
+        )
+        self.style.configure("Download.TButton",
+            font=("Helvetica", 12, "bold"),
+            padding=10,
+            background="#4CAF50",
+            foreground="white"
+        )
+        self.style.map("Download.TButton",
+            background=[("active", "#45a049"), ("disabled", "#cccccc")],
+            foreground=[("disabled", "#666666")]
+        )
+        
+        # Main container with padding
+        self.main_frame = ttk.Frame(root, padding="20 20 20 20")
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create header
+        header_frame = ttk.Frame(self.main_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 20))
+        ttk.Label(header_frame, 
+                 text="YouTube Video Downloader", 
+                 style="Header.TLabel").pack()
 
-
-        # Thumbnail Frame
-        self.thumbnail_frame = tk.Frame(root, bg="#f0f0f0", pady=10)
-        self.thumbnail_frame.pack(fill="x", padx=20)
-        self.thumbnail_label = tk.Label(self.thumbnail_frame, text="Video Thumbnail", font=self.app_font, bg="#f0f0f0")
-        self.thumbnail_label.pack()
-        self.image_label = tk.Label(self.thumbnail_frame, bg="#f0f0f0")
-        self.image_label.pack(pady=10)
-
-        # Download Options Frame (Restructured)
-        options_frame = tk.Frame(root, bg="#f0f0f0", pady=10)
-        options_frame.pack(fill="x", padx=20)
-
-        # Quality Selection (inside a LabelFrame)
-        quality_frame = tk.LabelFrame(options_frame, text="Video Quality", font=self.app_font, bg="#f0f0f0", padx=10, pady=5)
-        quality_frame.pack(fill="x")
-
+        # URL Frame
+        url_frame = ttk.LabelFrame(self.main_frame, text="Video URL", padding=10)
+        url_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        self.url_entry = ttk.Entry(url_frame, font=self.app_font, style="URL.TEntry")
+        self.url_entry.pack(fill=tk.X, expand=True, pady=5)
+        self.url_entry.bind("<Button-3>", self.show_context_menu)
+        self.url_entry.bind("<Return>", lambda e: self.get_video_info())
+        
+        # Video info frame
+        self.info_frame = ttk.LabelFrame(self.main_frame, text="Video Information", padding=10)
+        self.info_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # Thumbnail
+        self.thumbnail_label = ttk.Label(self.info_frame)
+        self.thumbnail_label.pack(pady=5)
+        
+        # Quality selection
+        quality_frame = ttk.Frame(self.info_frame)
+        quality_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(quality_frame, text="Quality:").pack(side=tk.LEFT)
         self.quality_combo = ttk.Combobox(quality_frame, state="readonly", font=self.app_font, width=50)
-        self.quality_combo.pack(side="left", expand=True, fill="x", padx=5)
-        self.quality_combo.bind("<<ComboboxSelected>>", self.update_filesize)
-
-        self.filesize_label = tk.Label(quality_frame, text="File Size: N/A", font=self.app_font, bg="#f0f0f0")
-        self.filesize_label.pack(side="left", padx=10)
-
-        # Add audio-only checkbox
-        self.audio_only_var = tk.BooleanVar()
-        self.audio_only_check = tk.Checkbutton(quality_frame, 
-                                             text="Audio Only",
-                                             variable=self.audio_only_var,
-                                             command=self.toggle_audio_only,
-                                             font=self.app_font,
-                                             bg="#f0f0f0")
-        self.audio_only_check.pack(side="right", padx=10)
-
-
-        # Save Location (inside a LabelFrame, below quality)
-        location_frame = tk.LabelFrame(options_frame, text="Save Location", font=self.app_font, bg="#f0f0f0", padx=10, pady=5)
-        location_frame.pack(fill="x", pady=10) # Added pady for spacing
-
-        self.location_entry = tk.Entry(location_frame, font=self.app_font, width=40)
-        self.location_entry.pack(side="left", expand=True, fill="x", padx=5)
-        self.location_entry.bind("<Button-3>", self.show_context_menu)  # Right click
-        self.location_entry.bind("<Control-a>", lambda e: self.select_all_text())  # Ctrl+A
-        self.location_entry.bind("<Control-A>", lambda e: self.select_all_text())  # Shift+Ctrl+A
-        self.set_default_download_path()
-        self.browse_btn = tk.Button(location_frame, text="Browse", command=self.browse_location, font=self.app_font, bg="#4CAF50", fg="white", padx=10)
-        self.browse_btn.pack(side="right")
-
-
-
-        # Download Button
-        self.download_button = tk.Button(root, text="Download", command=self.start_download, font=self.app_font, bg="#4CAF50", fg="white", padx=20, pady=10, state=tk.DISABLED)
-        self.download_button.pack()
-
-        # Progress Frame
-        self.info_frame = tk.Frame(root, bg="#f0f0f0")
-        self.info_frame.pack(fill="x", padx=20, pady=10)
-        self.progress_label = tk.Label(self.info_frame, text="", font=self.app_font, bg="#f0f0f0", wraplength=800)
-        self.progress_label.pack(pady=5)
-        self.progress_bar = ttk.Progressbar(self.info_frame, length=500, mode='determinate')
-        self.progress_bar.pack(pady=5)
-
+        self.quality_combo.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        # Audio only option
+        self.audio_only = tk.BooleanVar()
+        ttk.Checkbutton(quality_frame, 
+                       text="Audio Only",
+                       variable=self.audio_only,
+                       command=self.toggle_audio_only).pack(side=tk.RIGHT)
+        
+        # Save location frame
+        save_frame = ttk.LabelFrame(self.main_frame, text="Save Location", padding=10)
+        save_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        self.save_path = tk.StringVar()
+        self.save_entry = ttk.Entry(save_frame, 
+                                  textvariable=self.save_path, 
+                                  font=self.app_font,
+                                  state="readonly")
+        self.save_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        ttk.Button(save_frame, 
+                  text="Browse",
+                  command=self.browse_location).pack(side=tk.RIGHT)
+        
+        # Download button
+        self.download_btn = ttk.Button(self.main_frame,
+                                     text="Download",
+                                     command=self.start_download,
+                                     style="Download.TButton",
+                                     state=tk.DISABLED)
+        self.download_btn.pack(pady=10)
+        
+        # Progress frame
+        progress_frame = ttk.LabelFrame(self.main_frame, text="Progress", padding=10)
+        progress_frame.pack(fill=tk.X)
+        
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(progress_frame, 
+                                          variable=self.progress_var,
+                                          length=300,
+                                          mode='determinate')
+        self.progress_bar.pack(fill=tk.X, pady=(0, 5))
+        
+        self.status_label = ttk.Label(progress_frame,
+                                    text="Ready",
+                                    justify=tk.LEFT,
+                                    wraplength=700)
+        self.status_label.pack(fill=tk.X)
+        
         # Context menu
         self.context_menu = tk.Menu(root, tearoff=0)
-        self.context_menu.add_command(label="Cut", command=self.cut_text)
-        self.context_menu.add_command(label="Copy", command=self.copy_text)
-        self.context_menu.add_command(label="Paste", command=self.paste_text)
-        self.context_menu.add_separator()
-        self.context_menu.add_command(label="Select All", command=self.select_all_text)
-
-        # Store formats
+        self.context_menu.add_command(label="Cut", command=lambda: self.url_entry.event_generate("<<Cut>>"))
+        self.context_menu.add_command(label="Copy", command=lambda: self.url_entry.event_generate("<<Copy>>"))
+        self.context_menu.add_command(label="Paste", command=lambda: self.url_entry.event_generate("<<Paste>>"))
+        
+        # Initialize variables
         self.available_formats = []
-
+        self.video_title = ""
+        self.set_default_download_path()
 
     def show_context_menu(self, event):
-        """Displays the context menu for text widgets."""
-        widget = event.widget
-        if isinstance(widget, (tk.Entry, ttk.Combobox)):
-            try:
-                self.context_menu.tk_popup(event.x_root, event.y_root)
-                self.context_menu.focus_set()  # Give focus to the menu
-            finally:
-                self.context_menu.grab_release()
-
-    def cut_text(self):
-        """Cut the selected text."""
         try:
-            widget = self.root.focus_get()
-            if isinstance(widget, (tk.Entry, ttk.Combobox)):
-                widget.event_generate("<<Cut>>")
-        except Exception as e:
-            print(f"Cut error: {e}")
-
-    def copy_text(self):
-        """Copy the selected text."""
-        try:
-            widget = self.root.focus_get()
-            if isinstance(widget, (tk.Entry, ttk.Combobox)):
-                widget.event_generate("<<Copy>>")
-        except Exception as e:
-            print(f"Copy error: {e}")
-
-    def paste_text(self):
-        """Paste text at the cursor position."""
-        try:
-            widget = self.root.focus_get()
-            if isinstance(widget, (tk.Entry, ttk.Combobox)):
-                widget.event_generate("<<Paste>>")
-        except Exception as e:
-            print(f"Paste error: {e}")
-
-    def select_all_text(self):
-        """Select all text in the current widget."""
-        try:
-            widget = self.root.focus_get()
-            if isinstance(widget, (tk.Entry, ttk.Combobox)):
-                widget.select_range(0, tk.END)
-                widget.icursor(tk.END)  # Move cursor to end
-        except Exception as e:
-            print(f"Select all error: {e}")
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
 
     def set_default_download_path(self):
-        """Sets the default download path."""
-        try:
-            downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
-            if not os.path.exists(downloads_path):
-                os.makedirs(downloads_path)
-            self.location_entry.insert(0, downloads_path)
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not set default download path: {e}")
-            self.location_entry.insert(0, os.getcwd())
+        downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+        if not os.path.exists(downloads):
+            downloads = os.getcwd()
+        self.save_path.set(downloads)
 
     def browse_location(self):
-        """Opens a dialog to choose the download location."""
-        directory = filedialog.askdirectory(initialdir=self.location_entry.get())
+        directory = filedialog.askdirectory(initialdir=self.save_path.get())
         if directory:
-            self.location_entry.delete(0, tk.END)
-            self.location_entry.insert(0, directory)
-
-    def load_thumbnail(self, url):
-        """Loads and displays the video thumbnail."""
-        try:
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
-            img_data = BytesIO(response.content)
-            img = Image.open(img_data)
-            target_width = 320
-            ratio = target_width / img.width
-            target_height = int(img.height * ratio)
-            img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
-            photo = ImageTk.PhotoImage(img)
-            self.current_thumbnail = photo
-            self.image_label.configure(image=photo)
-            self.image_label.image = photo
-        except:
-            messagebox.showwarning("Thumbnail Error", "Could not load thumbnail.")
-
-    def format_size(self, size_bytes):
-        """Formats file size in a human-readable way."""
-        if not size_bytes:
-            return "N/A"
-        for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if size_bytes < 1024.0:
-                return f"{size_bytes:.2f} {unit}"
-            size_bytes /= 1024.0
+            self.save_path.set(directory)
 
     def get_video_info(self):
-        """Gets video information (formats, thumbnail) using yt-dlp."""
-        url = self.url_entry.get()
+        url = self.url_entry.get().strip()
         if not url:
-            messagebox.showerror("Error", "Please enter a YouTube URL.")
+            messagebox.showerror("Error", "Please enter a YouTube URL")
             return
-
-        self.info_btn.config(state=tk.DISABLED)
-        self.download_button.config(state=tk.DISABLED)
-        self.progress_label.config(text="Fetching video information...")
-        self.progress_bar['value'] = 0
-        self.available_formats = []
-        self.quality_combo.set('')
-        self.filesize_label.config(text="File Size: N/A")
-
+            
+        self.download_btn.config(state=tk.DISABLED)
+        self.status_label.config(text="Fetching video information...")
+        self.progress_var.set(0)
+        
         def fetch_info():
-            ydl_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'extract_flat': "in_playlist",
-            }
-
             try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info_dict = ydl.extract_info(url, download=False)
+                with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+                    info = ydl.extract_info(url, download=False)
                     
-                    if "entries" in info_dict:
-                        info_dict = info_dict['entries'][0]
-                    
-                    if not info_dict:
-                        raise Exception("Could not retrieve video information")
-
-                    thumbnail_url = info_dict.get('thumbnail')
+                    # Get thumbnail
+                    thumbnail_url = info.get('thumbnail')
                     if thumbnail_url:
-                        self.root.after(0, lambda: self.load_thumbnail(thumbnail_url))
-
-                    formats = info_dict.get('formats', [])
-                    if not formats:
-                        raise Exception("No formats found")
-
-                    formatted_formats = []
-                    # Add best audio+video combined option
-                    formatted_formats.append((
-                        "Best Quality (Auto)", 
-                        "bestvideo*+bestaudio/best", 
-                        None
-                    ))
+                        self.load_thumbnail(thumbnail_url)
                     
-                    # Add specific formats
+                    # Store video title
+                    self.video_title = info.get('title', 'video')
+                    
+                    # Get formats
+                    formats = []
+                    if self.audio_only.get():
+                        formats = [f for f in info['formats'] 
+                                 if f.get('vcodec') == 'none']
+                    else:
+                        formats = [f for f in info['formats']
+                                 if f.get('vcodec') != 'none']
+                    
+                    # Format the quality options
+                    self.available_formats = []
                     for f in formats:
-                        format_id = f.get('format_id', '')
-                        ext = f.get('ext', 'N/A')
-                        filesize = f.get('filesize')
-                        filesize_str = self.format_size(filesize) if filesize else "N/A"
-                        
-                        # Check if it's an audio-only format
-                        is_audio_only = f.get('vcodec') == 'none'
-                        
-                        if is_audio_only:
-                            acodec = f.get('acodec', 'N/A')
-                            abr = f.get('abr', 'N/A')
-                            display_str = f"Audio Only - {acodec} - {abr}kbps - {ext} - {filesize_str}"
+                        if self.audio_only.get():
+                            label = f"Audio - {f.get('acodec', 'N/A')} - {f.get('abr', 'N/A')}kbps"
                         else:
                             height = f.get('height', 'N/A')
+                            fps = f.get('fps', '')
                             vcodec = f.get('vcodec', 'N/A')
-                            fps = f.get('fps', 'N/A')
-                            acodec = f.get('acodec', 'N/A')
-                            resolution = f"{height}p" if height != 'N/A' else 'N/A'
-                            
-                            # Only add formats with both video and audio, or video-only formats
-                            if acodec != 'none' or is_audio_only:
-                                display_str = f"{resolution} - {vcodec} - {fps}fps - {acodec} - {ext} - {filesize_str}"
-                                formatted_formats.append((display_str, format_id, filesize))
-
-                    self.available_formats = formatted_formats
-                    self.root.after(0, lambda: [
-                        self.update_format_list(),
-                        self.download_button.config(state=tk.NORMAL),
-                        self.info_btn.config(state=tk.NORMAL),
-                        self.progress_label.config(text=f"Video Title: {info_dict.get('title', 'N/A')}")
-                    ])
-
+                            label = f"{height}p{f' {fps}fps' if fps else ''} - {vcodec}"
+                        
+                        self.available_formats.append({
+                            'label': label,
+                            'format_id': f['format_id']
+                        })
+                    
+                    # Update UI
+                    self.root.after(0, self.update_ui_after_info)
+                    
             except Exception as e:
-                self.root.after(0, lambda: [
-                    messagebox.showerror("Error", str(e)),
-                    self.info_btn.config(state=tk.NORMAL)
-                ])
+                self.root.after(0, lambda: self.show_error(str(e)))
 
         threading.Thread(target=fetch_info).start()
 
-    def update_filesize(self, event=None):
-        """Updates the filesize label."""
-        selected_index = self.quality_combo.current()
-        if selected_index == -1:
-            self.filesize_label.config(text="File Size: N/A")
-            return
+    def load_thumbnail(self, url):
         try:
-            selected_size = self.available_formats[selected_index][2]
-            self.filesize_label.config(text=f"File Size: {self.format_size(selected_size)}")
-        except IndexError:
-            self.filesize_label.config(text="File Size: N/A")
+            response = requests.get(url)
+            image = Image.open(BytesIO(response.content))
+            
+            # Resize maintaining aspect ratio
+            basewidth = 320
+            wpercent = (basewidth / float(image.size[0]))
+            hsize = int((float(image.size[1]) * float(wpercent)))
+            image = image.resize((basewidth, hsize), Image.Resampling.LANCZOS)
+            
+            # Convert to PhotoImage
+            photo = ImageTk.PhotoImage(image)
+            
+            # Update thumbnail
+            self.root.after(0, lambda: [
+                self.thumbnail_label.configure(image=photo),
+                setattr(self.thumbnail_label, 'image', photo)
+            ])
+        except Exception as e:
+            print(f"Error loading thumbnail: {e}")
+
+    def update_ui_after_info(self):
+        # Update quality combobox
+        self.quality_combo['values'] = [f['label'] for f in self.available_formats]
+        if self.available_formats:
+            self.quality_combo.set(self.available_formats[0]['label'])
+            self.download_btn.config(state=tk.NORMAL)
+        
+        # Update status
+        self.status_label.config(text=f"Ready to download: {self.video_title}")
+
+    def toggle_audio_only(self):
+        # Re-fetch video info to update format list
+        self.get_video_info()
 
     def start_download(self):
-        """Starts the download."""
-        if not self.url_entry.get():
-            messagebox.showerror("Error", "Please enter a YouTube URL.")
+        if not self.available_formats:
             return
-
-        if not self.location_entry.get():
-            messagebox.showerror("Error", "Please select a save location.")
-            return
-
+            
         selected_index = self.quality_combo.current()
-        if selected_index == -1:
-            messagebox.showerror("Error", "Please select a quality.")
-            return
-
-        self.download_button.config(state=tk.DISABLED)
-        self.progress_label.config(text="Starting download...")
-        self.progress_bar['value'] = 0
-
-        thread = threading.Thread(target=self.download_video)
-        thread.start()
-
-    def download_video(self):
-        """Downloads the video using yt-dlp."""
-        url = self.url_entry.get()
-        output_path = self.location_entry.get()
-        selected_index = self.quality_combo.current()
-        
         if selected_index < 0:
             messagebox.showerror("Error", "Please select a quality")
             return
             
-        selected_format = self.available_formats[selected_index][1]
-        is_audio_only = "Audio Only" in self.available_formats[selected_index][0]
-
+        format_id = self.available_formats[selected_index]['format_id']
+        
+        # Prepare options
         ydl_opts = {
-            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-            'format': selected_format,
-            'progress_hooks': [self.yt_dlp_progress_hook],
-            'quiet': True,
-            'no_warnings': True,
+            'format': format_id,
+            'outtmpl': os.path.join(self.save_path.get(), '%(title)s.%(ext)s'),
+            'progress_hooks': [self.update_progress],
+            'quiet': True
         }
-
-        if self.audio_only_var.get() or is_audio_only:
+        
+        if self.audio_only.get():
             ydl_opts.update({
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
-                }],
-                'format': 'bestaudio/best',
+                }]
             })
-        else:
-            # For video downloads, ensure we merge the formats if needed
-            ydl_opts.update({
-                'format': selected_format,
-                'merge_output_format': 'mp4',
-            })
+        
+        # Disable UI
+        self.download_btn.config(state=tk.DISABLED)
+        self.progress_var.set(0)
+        self.status_label.config(text="Starting download...")
+        
+        def download_thread():
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([self.url_entry.get()])
+                self.root.after(0, lambda: [
+                    messagebox.showinfo("Success", "Download completed successfully!"),
+                    self.status_label.config(text="Download complete"),
+                    self.download_btn.config(state=tk.NORMAL)
+                ])
+            except Exception as e:
+                self.root.after(0, lambda: [
+                    self.show_error(str(e)),
+                    self.download_btn.config(state=tk.NORMAL)
+                ])
+        
+        threading.Thread(target=download_thread).start()
 
-        try:
-            self.download_button.config(state=tk.DISABLED)
-            self.progress_label.config(text="Starting download...")
-            self.progress_bar['value'] = 0
-
-            def download_thread():
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
-                    self.root.after(0, lambda: [
-                        self.progress_label.config(text="Download complete!"),
-                        messagebox.showinfo("Success", "Download completed successfully!"),
-                        self.download_button.config(state=tk.NORMAL)
-                    ])
-                except Exception as e:
-                    self.root.after(0, lambda: [
-                        messagebox.showerror("Error", str(e)),
-                        self.download_button.config(state=tk.NORMAL)
-                    ])
-
-            threading.Thread(target=download_thread).start()
-
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-            self.download_button.config(state=tk.NORMAL)
-
-    def yt_dlp_progress_hook(self, d):
-        """Callback for yt-dlp progress updates."""
+    def update_progress(self, d):
         if d['status'] == 'downloading':
             try:
-                # Calculate percentage from downloaded bytes and total size
-                downloaded = d.get('downloaded_bytes', 0)
+                # Calculate progress
                 total = d.get('total_bytes', 0)
+                if not total:
+                    total = d.get('total_bytes_estimate', 0)
+                
+                downloaded = d.get('downloaded_bytes', 0)
                 if total:
                     percentage = (downloaded / total) * 100
                 else:
-                    # Fall back to estimated total bytes if available
-                    total = d.get('total_bytes_estimate', 0)
-                    if total:
-                        percentage = (downloaded / total) * 100
-                    else:
-                        # If no size info available, use provided percentage
-                        percentage = float(d['_percent_str'].replace('%', '').strip())
-
-                # Update progress bar
+                    percentage = float(d['_percent_str'].replace('%', '').strip())
+                
+                # Update UI
                 self.root.after(0, lambda: [
-                    self.progress_bar.config(value=percentage),
-                    self.progress_label.config(
+                    self.progress_var.set(percentage),
+                    self.status_label.config(
                         text=f"Downloading: {d['_percent_str']} • "
-                             f"Size: {d.get('_total_bytes_str', 'N/A')} • "
-                             f"Speed: {d.get('_speed_str', 'N/A')}"
-                    ),
-                    self.root.update_idletasks()
+                             f"Speed: {d.get('_speed_str', 'N/A')} • "
+                             f"ETA: {d.get('_eta_str', 'N/A')}"
+                    )
                 ])
             except Exception as e:
                 print(f"Progress error: {e}")
+                
         elif d['status'] == 'finished':
             self.root.after(0, lambda: [
-                self.progress_bar.config(value=100),
-                self.progress_label.config(text="Download complete! Processing file...")
+                self.progress_var.set(100),
+                self.status_label.config(text="Processing downloaded file...")
             ])
 
-    def toggle_audio_only(self):
-        """Toggles between audio-only and video formats."""
-        self.update_format_list()
-
-    def update_format_list(self):
-        """Updates the format list based on audio-only selection."""
-        if not self.available_formats:
-            return
-            
-        filtered_formats = []
-        for fmt in self.available_formats:
-            display_str, format_id, filesize = fmt
-            if self.audio_only_var.get():
-                if "Audio Only" in display_str:
-                    filtered_formats.append(fmt)
-            else:
-                if "Audio Only" not in display_str:
-                    filtered_formats.append(fmt)
-        
-        self.quality_combo.config(values=[f[0] for f in filtered_formats])
-        if filtered_formats:
-            self.quality_combo.set(filtered_formats[0][0])
-            self.update_filesize()
-
+    def show_error(self, message):
+        self.status_label.config(text="Error occurred")
+        messagebox.showerror("Error", message)
 
 if __name__ == "__main__":
     root = tk.Tk()
